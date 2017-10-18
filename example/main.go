@@ -1,7 +1,6 @@
 package main
 
 import (
-	"log"
 	"strings"
 	"text/template"
 
@@ -11,15 +10,11 @@ import (
 	_ "github.com/ot24net/eweb/example/routes"
 )
 
-// register static path
+// Register router
 func init() {
 	e := eweb.Default()
-	e.Static("/", "./public")
-}
-
-func main() {
-	e := eweb.Default()
-
+	// TODO: fix to env
+	e.Debug = true
 	// render
 	e.Renderer = eweb.NewTemplate(
 		template.Must(template.ParseGlob("./public/**/tpl/*.html")),
@@ -35,18 +30,24 @@ func main() {
 			uri := req.URL.Path
 			switch {
 			case strings.HasPrefix(uri, "/hacheck"):
-				// live check
 				return c.String(200, "1")
+
 			case uri == "/":
 				// TODO: redirect to need
 				// return c.Redirect(301,"/index")
 			}
+
+			// next route
 			return next(c)
 		}
 	})
 
+	// static file
+	e.Static("/", "./public")
+}
+
+func main() {
 	// Start server
-	addr := ":8081"
-	log.Printf("Listen: %s\n", addr)
-	log.Fatal(e.Start(addr))
+	e := eweb.Default()
+	e.Logger.Fatal(e.Start(":8081"))
 }

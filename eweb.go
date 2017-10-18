@@ -2,10 +2,6 @@ package eweb
 
 import (
 	"io"
-	"net"
-	"net/http"
-	"os"
-	"strings"
 	"sync"
 	"text/template"
 	"time"
@@ -29,7 +25,7 @@ func (t *Template) Render(w io.Writer, name string, data interface{}, c echo.Con
 
 var (
 	// Global instance
-	defaultE     *Echo
+	defaultE     *Eweb
 	defaultELock = sync.Mutex{}
 )
 
@@ -40,94 +36,86 @@ func DebugMode() bool {
 // Struct for rendering map
 type H map[string]interface{}
 
-type Echo struct {
+type Eweb struct {
 	*echo.Echo
-	colorer *color.Color
 }
 
 // Using global instance to manager router packages
-func Default() *Echo {
+func Default() *Eweb {
 	defaultELock.Lock()
 	defer defaultELock.Unlock()
 	if defaultE == nil {
-		defaultE = &Echo{Echo: echo.New(), colorer: color.New()}
-		defaultE.Debug = os.Getenv("GIN_MODE") != "release"
-		defaultE.HideBanner = true
-		defaultE.Echo.Server.Handler = defaultE
-		defaultE.Echo.TLSServer.Handler = defaultE
+		defaultE = &Eweb{
+			Echo: echo.New(),
+		}
+		defaultE.Debug = false
+		// monitor middleware
+		defaultE.Use(defaultE.Monitor)
 	}
 	return defaultE
 }
 
-func (e *Echo) colorForStatus(code string) string {
+func (e *Eweb) colorForStatus(code int) string {
 	switch {
-	case code >= "200" && code < "300":
-		return e.colorer.Green(code)
-	case code >= "300" && code < "400":
-		return e.colorer.White(code)
-	case code >= "400" && code < "500":
-		return e.colorer.Yellow(code)
+	case code >= 200 && code < 300:
+		return color.Green(code)
+	case code >= 300 && code < 400:
+		return color.White(code)
+	case code >= 400 && code < 500:
+		return color.Yellow(code)
 	default:
-		return e.colorer.Red(code)
+		return color.Red(code)
 	}
 }
 
-func (e *Echo) colorForMethod(method string) string {
+func (e *Eweb) colorForMethod(method string) string {
 	switch method {
 	case "GET":
-		return e.colorer.Blue(method)
+		return color.Blue(method)
 	case "POST":
-		return e.colorer.Cyan(method)
+		return color.Cyan(method)
 	case "PUT":
-		return e.colorer.Yellow(method)
+		return color.Yellow(method)
 	case "DELETE":
-		return e.colorer.Red(method)
+		return color.Red(method)
 	case "PATCH":
-		return e.colorer.Green(method)
+		return color.Green(method)
 	case "HEAD":
-		return e.colorer.Magenta(method)
+		return color.Magenta(method)
 	case "OPTIONS":
-		return e.colorer.White(method)
+		return color.White(method)
 	default:
-		return e.colorer.Reset(method)
+		return color.Reset(method)
 	}
 }
 
-func getRealIp(request *http.Request) string {
-	ra := request.RemoteAddr
-	if ip := request.Header.Get(echo.HeaderXForwardedFor); ip != "" {
-		ra = strings.Split(ip, ", ")[0]
-	} else if ip := request.Header.Get(echo.HeaderXRealIP); ip != "" {
-		ra = ip
-	} else {
-		ra, _, _ = net.SplitHostPort(ra)
+func (e *Eweb) Monitor(next echo.HandlerFunc) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		// request log
+		defer func(start time.Time) {
+			stop := time.Now()
+			req := c.Request()
+			res := c.Response()
+
+			n := res.Status
+			if !e.Debug && n < 400 {
+				return
+			}
+
+			contentInL := req.Header.Get(echo.HeaderContentLength)
+			if contentInL == "" {
+				contentInL = "0"
+			}
+			contentOutL := res.Size
+			color.Printf(
+				"[echo] %s | %s | %s | %s | %s | %s | %sB | %dB \n",
+				start.Format("2006-01-02 15:04:05"),
+				e.colorForStatus(n), e.colorForMethod(req.Method), req.RequestURI,
+				stop.Sub(start).String(), // latency_human
+				c.RealIP(),
+				contentInL, contentOutL,
+			)
+		}(time.Now())
+		return next(c)
 	}
-	return ra
-
-}
-
-// rebuild echo.Echo#ServeHTTP
-func (e *Echo) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// request log
-	defer func(start time.Time) {
-		stop := time.Now()
-		req := r
-
-		n := w.Header().Get("STATUS")
-		if !e.Debug && n < "400" {
-			return
-		}
-		e.colorer.Printf(
-			"[echo] %s | %s | %s | %s | %s | %s \n",
-			start.Format("2006-01-02 15:04:05"),
-			e.colorForStatus(n), e.colorForMethod(req.Method), req.RequestURI,
-			stop.Sub(start).String(), // latency_human
-			getRealIp(r),
-		)
-
-	}(time.Now())
-
-	// super call
-	e.Echo.ServeHTTP(w, r)
-
 }
