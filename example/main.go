@@ -2,7 +2,6 @@ package main
 
 import (
 	"strings"
-	"text/template"
 
 	"github.com/labstack/echo"
 	"github.com/labstack/echo/middleware"
@@ -16,9 +15,7 @@ func init() {
 	// TODO: fix to env
 	e.Debug = true
 	// render
-	e.Renderer = eweb.NewTemplate(
-		template.Must(template.ParseGlob("./public/**/tpl/*.html")),
-	)
+	e.Renderer = eweb.GlobTemplate("./public/**/tpl/*.html")
 
 	// middle ware
 	e.Use(middleware.Gzip())

@@ -17,6 +17,9 @@ type Template struct {
 func NewTemplate(tpl *template.Template) *Template {
 	return &Template{tpl}
 }
+func GlobTemplate(filePath string) *Template {
+	return &Template{template.Must(template.ParseGlob(filePath))}
+}
 
 // Implements Renderer interface
 func (t *Template) Render(w io.Writer, name string, data interface{}, c echo.Context) error {
